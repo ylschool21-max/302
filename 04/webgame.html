@@ -57,6 +57,31 @@
             color: white;
             text-align: center;
         }
+        /* 홈 버튼 스타일 */
+        .home-button {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.9);
+            color: #1a4731;
+            padding: 10px 20px;
+            border-radius: 15px;
+            font-weight: bold;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.2s;
+            pointer-events: auto;
+        }
+        .home-button:hover {
+            transform: translateY(-2px);
+            background: white;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
         /* 배경 이미지가 있는 화면 스타일 */
         #start-screen, #result-screen {
             position: absolute;
@@ -104,6 +129,12 @@
 <body>
 
 <div id="video-container">
+    <!-- 홈 버튼 추가 -->
+    <a href="../index.html" class="home-button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        홈으로
+    </a>
+
     <video id="input-video" playsinline></video>
     <canvas id="output-canvas"></canvas>
 
@@ -179,7 +210,7 @@
 
     const ITEM_CONFIG = {
         VEGGIE: { value: 10, speed: 3.5, chance: 0.91 },
-        SWEET: { value: -10, speed: 4.5, chance: 0.09 } // 감점 수치를 -10점으로 변경
+        SWEET: { value: -10, speed: 4.5, chance: 0.09 } 
     };
 
     function startBGM() {
@@ -257,9 +288,8 @@
         canvasCtx.restore();
     }
 
-    // 아이템 겹침 방지 로직
     function isOverlapping(newX, newY) {
-        const minDistance = 150; // 아이템 간 최소 간격
+        const minDistance = 150; 
         for (const item of items) {
             const dist = Math.hypot(item.x - newX, item.y - newY);
             if (dist < minDistance) return true;
@@ -278,7 +308,6 @@
             let newX = Math.random() * (canvasElement.width - 150) + 75;
             let newY = -100;
 
-            // 겹치지 않을 때까지 위치 재조정 (최대 5번 시도)
             let attempts = 0;
             while (isOverlapping(newX, newY) && attempts < 5) {
                 newX = Math.random() * (canvasElement.width - 150) + 75;
@@ -302,7 +331,6 @@
             canvasCtx.textAlign = "center";
             canvasCtx.textBaseline = "middle";
             
-            // 그림자 효과 추가
             canvasCtx.shadowBlur = 10;
             canvasCtx.shadowColor = "rgba(0,0,0,0.3)";
             canvasCtx.fillText(item.emoji, item.x, item.y);
