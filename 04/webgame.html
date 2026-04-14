@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>야채 잡기 게임</title>
+    <!-- MediaPipe Hands & Camera Utils -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a202c;
+            font-family: 'Malgun Gothic', sans-serif;
+        }
+        #video-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        video {
+            transform: scaleX(-1);
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        canvas {
+            transform: scaleX(-1);
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            gap: 20px;
+            pointer-events: none;
+        }
+        .stat-card {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+            padding: 15px 30px;
+            border-radius: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            text-align: center;
+        }
+        /* 배경 이미지가 있는 화면 스타일 */
+        #start-screen, #result-screen {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        
+        #start-screen {
+            background-image: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('https://images.unsplash.com/photo-1550989460-0adf9ea622e2?auto=format&fit=crop&q=80&w=1000');
+            color: white;
+        }
+        
+        #result-screen {
+            background-image: linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)), url('https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?auto=format&fit=crop&q=80&w=1000');
+            display: none;
+            z-index: 110;
+            color: #1a4731;
+            text-align: center;
+        }
+
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #10b981;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .floating-item {
+            filter: drop-shadow(0 10px 8px rgba(0,0,0,0.2));
+        }
+    </style>
+</head>
+<body>
+
+<div id="video-container">
+    <video id="input-video" playsinline></video>
+    <canvas id="output-canvas"></canvas>
+
+    <div class="ui-overlay" id="game-ui" style="display: none;">
+        <div class="stat-card">
+            <div class="text-sm uppercase tracking-widest opacity-80">현재 점수 (Score)</div>
+            <div id="score-display" class="text-4xl font-bold text-green-400">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="text-sm uppercase tracking-widest opacity-80">남은 시간 (Time)</div>
+            <div id="timer-display" class="text-4xl font-bold text-yellow-400">60s</div>
+        </div>
+    </div>
+
+    <!-- Start Screen -->
+    <div id="start-screen">
+        <div class="bg-black bg-opacity-40 p-10 rounded-3xl backdrop-filter backdrop-blur-sm text-center border-4 border-green-500">
+            <h1 class="text-6xl font-black mb-6 text-green-400">🥗 신선 야채 대작전!</h1>
+            <p class="text-2xl mb-8 font-medium">손바닥을 펼쳐 하늘에서 내려오는 야채를 잡으세요!</p>
+            <div class="flex justify-center gap-4 mb-8 text-4xl">
+                <span>🥒</span><span>🥕</span><span>🫑</span><span>🥬</span>
+            </div>
+            <div id="loading-area" class="flex flex-col items-center">
+                <div class="loading-spinner"></div>
+                <p class="mt-4 text-lg">카메라 렌즈를 닦고 기다려주세요...</p>
+            </div>
+            <button id="start-btn" class="hidden bg-green-500 hover:bg-green-600 text-white px-12 py-5 rounded-full text-3xl font-bold transition transform hover:scale-110 shadow-2xl">
+                시작하기!
+            </button>
+        </div>
+    </div>
+
+    <!-- Result Screen -->
+    <div id="result-screen">
+        <div class="max-w-2xl p-12 bg-white bg-opacity-90 rounded-3xl shadow-2xl border-8 border-green-100">
+            <h2 id="result-title" class="text-7xl font-black mb-4 text-green-600">TIME UP!</h2>
+            <p id="result-desc" class="text-3xl mb-8 font-bold text-gray-700"></p>
+            <div class="text-5xl font-black text-green-500 mb-10 bg-green-50 py-6 rounded-2xl">
+                내 점수: <span id="final-score">0</span>점
+            </div>
+            <button onclick="location.reload()" class="bg-blue-500 hover:bg-blue-600 text-white px-10 py-4 rounded-2xl text-2xl font-bold transition shadow-lg">
+                한 번 더 하기!
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const videoElement = document.getElementById('input-video');
+    const canvasElement = document.getElementById('output-canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const scoreDisplay = document.getElementById('score-display');
+    const timerDisplay = document.getElementById('timer-display');
+    const startBtn = document.getElementById('start-btn');
+    const startScreen = document.getElementById('start-screen');
+    const loadingArea = document.getElementById('loading-area');
+    const resultScreen = document.getElementById('result-screen');
+
+    let score = 0;
+    let timeLeft = 60;
+    let gameActive = false;
+    let timerInterval = null;
+    let items = [];
+    let handPositions = [];
+
+    // Audio Context
+    let audioCtx = null;
+    let bgmInterval = null;
+
+    // Vegetables (Positive) and Sweets (Negative)
+    const VEGETABLES = ['🥒', '🥕', '🫑', '🥬']; 
+    const SWEETS = ['🍫', '🍭', '🍪'];
+
+    const ITEM_CONFIG = {
+        VEGGIE: { value: 10, speed: 3.5, chance: 0.91 },
+        SWEET: { value: -10, speed: 4.5, chance: 0.09 } // 감점 수치를 -10점으로 변경
+    };
+
+    function startBGM() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const melody = [
+            { f: 523.25, d: 0.5 }, { f: 659.25, d: 0.5 }, { f: 783.99, d: 0.5 }, { f: 659.25, d: 0.5 },
+            { f: 587.33, d: 0.5 }, { f: 698.46, d: 0.5 }, { f: 880.00, d: 0.5 }, { f: 698.46, d: 0.5 }
+        ];
+        let noteIndex = 0;
+        function playNextNote() {
+            if (!gameActive) return;
+            const note = melody[noteIndex];
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(note.f, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + note.d);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + note.d);
+            noteIndex = (noteIndex + 1) % melody.length;
+            bgmInterval = setTimeout(playNextNote, note.d * 1000);
+        }
+        playNextNote();
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        if (type === 'catch') {
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(1400, audioCtx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.2);
+        } else {
+            oscillator.type = 'sawtooth';
+            oscillator.frequency.setValueAtTime(220, audioCtx.currentTime);
+            oscillator.frequency.linearRampToValueAtTime(60, audioCtx.currentTime + 0.3);
+            gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.3);
+            oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.3);
+        }
+    }
+
+    function speak(text) {
+        const msg = new SpeechSynthesisUtterance();
+        msg.text = text; msg.lang = 'ko-KR'; msg.rate = 1.1;
+        window.speechSynthesis.speak(msg);
+    }
+
+    function onResults(results) {
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+        handPositions = [];
+        if (results.multiHandLandmarks) {
+            for (const landmarks of results.multiHandLandmarks) {
+                const palmX = landmarks[9].x * canvasElement.width;
+                const palmY = landmarks[9].y * canvasElement.height;
+                handPositions.push({ x: palmX, y: palmY });
+                canvasCtx.fillStyle = 'rgba(16, 185, 129, 0.4)'; 
+                canvasCtx.beginPath();
+                canvasCtx.arc(palmX, palmY, 60, 0, 2 * Math.PI);
+                canvasCtx.fill();
+            }
+        }
+        if (gameActive) updateGameObjects();
+        canvasCtx.restore();
+    }
+
+    // 아이템 겹침 방지 로직
+    function isOverlapping(newX, newY) {
+        const minDistance = 150; // 아이템 간 최소 간격
+        for (const item of items) {
+            const dist = Math.hypot(item.x - newX, item.y - newY);
+            if (dist < minDistance) return true;
+        }
+        return false;
+    }
+
+    function updateGameObjects() {
+        if (Math.random() < 0.12) {
+            const isVeggie = Math.random() < ITEM_CONFIG.VEGGIE.chance;
+            const typeKey = isVeggie ? 'VEGGIE' : 'SWEET';
+            const config = ITEM_CONFIG[typeKey];
+            const emojiList = isVeggie ? VEGETABLES : SWEETS;
+            const selectedEmoji = emojiList[Math.floor(Math.random() * emojiList.length)];
+
+            let newX = Math.random() * (canvasElement.width - 150) + 75;
+            let newY = -100;
+
+            // 겹치지 않을 때까지 위치 재조정 (최대 5번 시도)
+            let attempts = 0;
+            while (isOverlapping(newX, newY) && attempts < 5) {
+                newX = Math.random() * (canvasElement.width - 150) + 75;
+                attempts++;
+            }
+
+            items.push({
+                x: newX, y: newY,
+                type: typeKey,
+                emoji: selectedEmoji,
+                value: config.value,
+                speed: config.speed + (Math.random() * 2.5)
+            });
+        }
+
+        for (let i = items.length - 1; i >= 0; i--) {
+            const item = items[i];
+            item.y += item.speed;
+
+            canvasCtx.font = "80px Arial";
+            canvasCtx.textAlign = "center";
+            canvasCtx.textBaseline = "middle";
+            
+            // 그림자 효과 추가
+            canvasCtx.shadowBlur = 10;
+            canvasCtx.shadowColor = "rgba(0,0,0,0.3)";
+            canvasCtx.fillText(item.emoji, item.x, item.y);
+            canvasCtx.shadowBlur = 0;
+
+            let caught = false;
+            for (const hand of handPositions) {
+                if (Math.hypot(item.x - hand.x, item.y - hand.y) < 80) {
+                    caught = true; break;
+                }
+            }
+
+            if (caught) {
+                playSound(item.type === 'VEGGIE' ? 'catch' : 'fail');
+                score += item.value;
+                if (score < 0) score = 0;
+                scoreDisplay.innerText = `${score}`;
+                items.splice(i, 1);
+            } else if (item.y > canvasElement.height + 150) {
+                items.splice(i, 1);
+            }
+        }
+    }
+
+    function startGame() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        startScreen.style.display = 'none';
+        document.getElementById('game-ui').style.display = 'flex';
+        score = 0; timeLeft = 60; items = []; gameActive = true;
+        scoreDisplay.innerText = `0`;
+        startBGM();
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            timerDisplay.innerText = `${timeLeft}s`;
+            if (timeLeft <= 0) endGame();
+        }, 1000);
+    }
+
+    function endGame() {
+        if (!gameActive) return;
+        gameActive = false;
+        clearInterval(timerInterval);
+        clearTimeout(bgmInterval);
+        const resultDesc = document.getElementById('result-desc');
+        const finalScoreElem = document.getElementById('final-score');
+        finalScoreElem.innerText = score;
+        resultScreen.style.display = 'flex';
+        let speechText = `게임 종료! 최종 점수는 ${score}점입니다. `;
+        if (score >= 300) { resultDesc.innerText = "당신은 진정한 야채 박사! 🥦✨"; speechText += "정말 대단한 실력이에요!"; }
+        else if (score >= 150) { resultDesc.innerText = "참 잘했어요! 야채를 정말 사랑하시네요! 🥕"; speechText += "훌륭합니다!"; }
+        else { resultDesc.innerText = "수고했어요! 야채랑 조금 더 친해져 볼까요? 🥗"; speechText += "다음엔 더 잘할 수 있을 거예요!"; }
+        speak(speechText);
+    }
+
+    const hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+    hands.onResults(onResults);
+    const camera = new Camera(videoElement, { onFrame: async () => { await hands.send({image: videoElement}); }, width: 1280, height: 720 });
+    camera.start().then(() => { loadingArea.style.display = 'none'; startBtn.classList.remove('hidden'); });
+
+    startBtn.addEventListener('click', startGame);
+    function onResize() { canvasElement.width = window.innerWidth; canvasElement.height = window.innerHeight; }
+    window.addEventListener('resize', onResize);
+    onResize();
+</script>
+</body>
+</html>
